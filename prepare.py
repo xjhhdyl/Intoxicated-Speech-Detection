@@ -4,6 +4,8 @@ import pandas as pd
 import re
 import torchaudio
 import torchaudio.transforms as T
+import torch
+import scipy.interpolate as spi
 
 parser = argparse.ArgumentParser(description="preprocess.")
 
@@ -79,12 +81,18 @@ def upAnddown(wav_file_path, bins_file_path):
     time_df = esd_df.iloc[:, 0]  # 获取时间戳的那一列
     bins_df = esd_df.iloc[:, 1:-1]  # 获取bins的列
     max = bins_df.max(axis=1)  # 找到bins中每一行的最大值，并且赋值给max列
-    time = (time_df - time_df[0]) / 1000  # bins的时间序列
+    esd_time = (time_df - time_df[0]) / 1000  # bins的时间序列
 
     # 音频下采样至16Khz
     resample_rate = 16000
     resampler = T.Resample(sample_rate, resample_rate, dtype=waveform.dtype)
     resampled_waveform = resampler(waveform)
+
+    # 超声波上采样至16Khz
+    num_channels, num_frames = resampled_waveform.shape
+    time = torch.arange(0, num_frames) / resample_rate  # 音频的时间点
+    ipo1 = spi.splrep(esd_time.values, max.values, k=1)  # 样本点导入，生成参数
+    upsample_esd = spi.splev(time, ipo1)  # 根据观测点和样条参数，生成插值，观测点设置为音频的时间坐标
 
 def main(args):
     root = args.root
