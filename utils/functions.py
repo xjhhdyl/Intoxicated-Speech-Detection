@@ -2,6 +2,8 @@ import os
 import numpy as np
 import scipy.io.wavfile as wav
 from python_speech_features import logfbank
+import glob
+
 
 # 提取语音特征，作为网络的输入
 def wav2logfbank(f_path, win_size, n_filters, nfft=512):
@@ -10,6 +12,7 @@ def wav2logfbank(f_path, win_size, n_filters, nfft=512):
     os.remove(f_path)
     np.save(f_path[:-3] + "fb" + str(n_filters), fbank_feat)
 
+
 def traverse(root, path, search_fix=".flac"):
     f_list = []
 
@@ -17,9 +20,24 @@ def traverse(root, path, search_fix=".flac"):
         p = root + p
         for sub_p in sorted(os.listdir(p)):
             for sub2_p in sorted(os.listdir(p + sub_p + "/")):
-                    # Read acoustic feature
-                    for file in sorted(os.listdir(p + sub_p + "/" + sub2_p)):
-                        if search_fix in file:
-                            file_path = p + sub_p + "/" + sub2_p + "/" + file
-                            f_list.append(file_path)
+                # Read acoustic feature
+                for file in sorted(os.listdir(p + sub_p + "/" + sub2_p)):
+                    if search_fix in file:
+                        file_path = p + sub_p + "/" + sub2_p + "/" + file
+                        f_list.append(file_path)
     return f_list
+
+
+#  把超声波信号转换成wav格式
+#  folder_path，wav文件路径
+def bins2Wav(folder_path):
+    # 使用glob模块匹配所有后缀名为.wav的文件
+    wav_files = glob.glob(os.path.join(folder_path, '*.csv'))
+
+    # 遍历所有匹配到的文件并打印文件名
+    for wav_file in wav_files:
+        print(wav_file)
+
+
+if __name__ == "__main__":
+    bins2Wav(r'C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\ultrasound\intoxicate')
