@@ -6,6 +6,8 @@ import torchaudio
 import torchaudio.transforms as T
 import torch
 import scipy.interpolate as spi
+import soundfile
+from sklearn.preprocessing import MinMaxScaler
 
 parser = argparse.ArgumentParser(description="preprocess.")
 
@@ -93,6 +95,14 @@ def upAnddown(wav_file_path, bins_file_path):
     time = torch.arange(0, num_frames) / resample_rate  # 音频的时间点
     ipo1 = spi.splrep(esd_time.values, max.values, k=1)  # 样本点导入，生成参数
     upsample_esd = spi.splev(time, ipo1)  # 根据观测点和样条参数，生成插值，观测点设置为音频的时间坐标
+
+    # 超声波 min-max scaling
+    min_max_scaler = MinMaxScaler(feature_range=(0, 1), copy=True)  # 定义归一化的范围为[0,1]
+    esd_data_minmax = min_max_scaler.fit_transform(upsample_esd.reshape(-1, 1))
+    # 超声波文件转化为wav文件
+    ultrasound2wav_path = bins_file_path.replace('ultrasound', 'ultrasound2wav').replace('csv', 'wav')
+    soundfile.write(ultrasound2wav_path, esd_data_minmax, resample_rate)
+
 
 def main(args):
     root = args.root
