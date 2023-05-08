@@ -7,7 +7,8 @@ import torchaudio.transforms as T
 import torch
 import scipy.interpolate as spi
 import soundfile
-from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+import auditok
 
 parser = argparse.ArgumentParser(description="preprocess.")
 
@@ -96,13 +97,27 @@ def upAnddown(wav_file_path, bins_file_path):
     ipo1 = spi.splrep(esd_time.values, max.values, k=1)  # 样本点导入，生成参数
     upsample_esd = spi.splev(time, ipo1)  # 根据观测点和样条参数，生成插值，观测点设置为音频的时间坐标
 
-    # 超声波 min-max scaling
-    min_max_scaler = MinMaxScaler(feature_range=(0, 1), copy=True)  # 定义归一化的范围为[0,1]
-    esd_data_minmax = min_max_scaler.fit_transform(upsample_esd.reshape(-1, 1))
-    # 超声波文件转化为wav文件
-    ultrasound2wav_path = bins_file_path.replace('ultrasound', 'ultrasound2wav').replace('csv', 'wav')
-    soundfile.write(ultrasound2wav_path, esd_data_minmax, resample_rate)
+    # # 超声波文件转化为wav文件
+    # ultrasound2wav_path = bins_file_path.replace('ultrasound', 'ultrasound2wav').replace('csv', 'wav')
+    # soundfile.write(ultrasound2wav_path, esd_data_minmax, resample_rate)
 
+    # 超声波和音频信号相乘
+    multilsignal = np.multiply(upsample_esd, resampled_waveform.numpy().reshape(-1, 1).squeeze())
+    multilsignal_path = bins_file_path.replace('ultrasound', 'multilsignal').replace('TEST_BINS', 'mix').replace('csv',
+                                                'wav')
+    soundfile.write(multilsignal_path, multilsignal, resample_rate)
+
+def split_signal():
+    #
+
+
+    audio_regions = auditok.split(
+        wav_path,
+        min_dur=0.2,  # minimum duration of a valid audio event in seconds
+        max_dur=4,  # maximum duration of an event
+        max_silence=0.3,  # maximum duration of tolerated continuous silence within an event
+        energy_threshold=55  # threshold of detection
+    )
 
 def main(args):
     root = args.root
@@ -128,22 +143,26 @@ def main(args):
 
 
 if __name__ == '__main__':
-    # 1.从原始数据集导出描述数据集的csv
-    # 2.上采样 - 下采样，相乘后的信号（去噪）
-    # 3.把超声波信号转换成wav格式，方便后面提取特征
-    # 4.利用相乘后的信号同时切割多模态信号---auditok
+    # 1.从原始数据集导出描述数据集的csv（完成）
+    # 2.音频下采样 -> 超声波上采样 -> 超声波信号和音频信号相乘（完成）
+    # 3.把超声波信号转换成wav格式（完成）
+    # 4.相乘信号低通滤波，利用auditok同时切割多模态信号
     # 5.生成切割后的文件
     # 6.划分训练集和测试集
-    # 7.提取特征
-    WAV_SOBER_DATA_DIR = "data/voice/sober"  # 清醒语音数据的文件路径
-    WAV_INTOXICATE_DATA_DIR = "data/voice/intoxicate"  # 醉酒语音数据的文件路径
-    DATASET = "data/data.csv"  # 数据集存放的路径
+    # 7.提取Log-mel Filterbank Coefficients特征
 
-    create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET)  # 生成原始数据集的描述文件csv
-    data_df = pd.read_csv(DATASET)  # 读取数据集的文件
-    for row in data_df.itertuples():  # 按行遍历
-        # 通过getattr(row, ‘name')获取元素
-        upAnddown(getattr(row, 'wav_file_name'), getattr(row, 'ultrasound_file_name'))  # 对音频上采样，超声波下采样
+
+    # WAV_SOBER_DATA_DIR = "data/voice/sober"  # 清醒语音数据的文件路径
+    # WAV_INTOXICATE_DATA_DIR = "data/voice/intoxicate"  # 醉酒语音数据的文件路径
+    # DATASET = "data/data.csv"  # 数据集存放的路径
+    #
+    # create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET)  # 生成原始数据集的描述文件csv
+    # data_df = pd.read_csv(DATASET)  # 读取数据集的文件
+    # for row in data_df.itertuples():  # 按行遍历
+    #     # 通过getattr(row, ‘name')获取元素
+    #     upAnddown(getattr(row, 'wav_file_name'), getattr(row, 'ultrasound_file_name'))  # 对音频上采样，超声波下采样
+
+    split_signal('data/multilsignal')
 
     # args = parser.parse_args()
     # main(args)
