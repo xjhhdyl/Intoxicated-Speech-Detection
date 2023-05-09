@@ -1,13 +1,14 @@
-import argparse
 import os
-import pandas as pd
 import re
+import torch
 import torchaudio
 import torchaudio.transforms as T
-import torch
+import argparse
+import pandas as pd
 import scipy.interpolate as spi
 import soundfile
 import numpy as np
+from scipy import signal
 import auditok
 
 parser = argparse.ArgumentParser(description="preprocess.")
@@ -52,6 +53,21 @@ parser.add_argument(
 )
 
 
+def butter_lowpass(sample_rate, cut_off, order=5):
+    """ 低通滤波器的设计 """
+    nyq = 0.5 * sample_rate
+    normal_cut_off = cut_off / nyq  # Wn 归一化的截止频率
+    b, a = signal.butter(order, normal_cut_off, btype="low", analog=False)
+    return b, a
+
+
+def butter_lowpass_filtfilt(data, sample_rate, cut_off_frequency, order=5):
+    """ 低通滤波器的执行，消除延迟 """
+    b, a = butter_lowpass(sample_rate, cut_off_frequency, order=order)
+    y = signal.filtfilt(b, a, data)
+    return y
+
+
 def create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET):
     # 0-清醒  1-醉酒
     dataset_df = pd.DataFrame(columns=['wav_file_name', 'ultrasound_file_name', 'classID', 'class'])  # 创建数据集
@@ -77,6 +93,33 @@ def create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET):
     dataset_df.to_csv(DATASET, index=False)
 
 
+def create_split_dataset_csv(mix_data_dir, split_dataset):
+    # 0-清醒  1-醉酒
+    split_dataset_df = pd.DataFrame(columns=['mix_file_path', 'ultrasound2wav_file_path', 'classID', 'class'])  # 创建数据集
+    mix_sober_data_dir = mix_data_dir + "/sober"
+    mix_intoxicate_data_dir = mix_data_dir + "/intoxicate"
+
+    mix_sober = os.listdir(mix_sober_data_dir)
+    mix_intoxicate = os.listdir(mix_intoxicate_data_dir)
+
+    for mix_sober_file_name in mix_sober:
+        number = re.findall("\d+", mix_sober_file_name)  # 提取出字符串中的编号
+        ultrasound2wav_file_name = "TEST_BINS" + number[0] + ".wav"
+        u2w_sober_dir = mix_sober_data_dir.replace("multilsignal", "ultrasound2wav")
+        split_dataset_df.loc[len(split_dataset_df.index)] = [mix_sober_data_dir + "/" + mix_sober_file_name,
+                                                             u2w_sober_dir + "/" + ultrasound2wav_file_name, 0,
+                                                             'sober']  # 向数据集插入一条清醒数据记录
+
+    for mix_intoxicate_file_name in mix_intoxicate:
+        number = re.findall("\d+", mix_intoxicate_file_name)  # 提取出字符串中的编号
+        ultrasound2wav_file_name = "TEST_BINS" + number[0] + ".wav"
+        u2w_intoxicate_dir = mix_intoxicate_data_dir.replace("multilsignal", "ultrasound2wav")
+        split_dataset_df.loc[len(split_dataset_df.index)] = [mix_intoxicate_data_dir + "/" + mix_intoxicate_file_name,
+                                                             u2w_intoxicate_dir + "/" + ultrasound2wav_file_name, 1,
+                                                             'intoxicate']  # 向数据集插入一条清醒数据记录
+    split_dataset_df.to_csv(split_dataset, index=False)
+
+
 def upAnddown(wav_file_path, bins_file_path):
     waveform, sample_rate = torchaudio.load(wav_file_path)  # 读取音频文件
 
@@ -97,27 +140,47 @@ def upAnddown(wav_file_path, bins_file_path):
     ipo1 = spi.splrep(esd_time.values, max.values, k=1)  # 样本点导入，生成参数
     upsample_esd = spi.splev(time, ipo1)  # 根据观测点和样条参数，生成插值，观测点设置为音频的时间坐标
 
-    # # 超声波文件转化为wav文件
-    # ultrasound2wav_path = bins_file_path.replace('ultrasound', 'ultrasound2wav').replace('csv', 'wav')
-    # soundfile.write(ultrasound2wav_path, esd_data_minmax, resample_rate)
+    # 超声波文件转化为wav文件
+    ultrasound2wav_path = bins_file_path.replace('ultrasound', 'ultrasound2wav').replace('csv', 'wav')
+    soundfile.write(ultrasound2wav_path, upsample_esd, resample_rate)
 
     # 超声波和音频信号相乘
     multilsignal = np.multiply(upsample_esd, resampled_waveform.numpy().reshape(-1, 1).squeeze())
     multilsignal_path = bins_file_path.replace('ultrasound', 'multilsignal').replace('TEST_BINS', 'mix').replace('csv',
-                                                'wav')
-    soundfile.write(multilsignal_path, multilsignal, resample_rate)
-
-def split_signal():
-    #
+                                                                                                                 'wav')
+    butter_lowpass_multilsignal = butter_lowpass_filtfilt(multilsignal, resample_rate, 1000)  # 低通滤波，截至频率为1000Hz
+    soundfile.write(multilsignal_path, butter_lowpass_multilsignal, resample_rate)
 
 
-    audio_regions = auditok.split(
-        wav_path,
-        min_dur=0.2,  # minimum duration of a valid audio event in seconds
-        max_dur=4,  # maximum duration of an event
-        max_silence=0.3,  # maximum duration of tolerated continuous silence within an event
-        energy_threshold=55  # threshold of detection
-    )
+def split_signal(mix_data_dir, split_dataset):
+    create_split_dataset_csv(mix_data_dir, split_dataset)  # 创建分割数据集
+
+    split_mix_dir = 'data/split_multisignal/'
+
+    split_data_df = pd.read_csv(split_dataset)  # 读取数据集的文件
+    for row in split_data_df.itertuples():  # 按行遍历
+        mix_file_path = getattr(row, 'mix_file_path')
+        signal_class = mix_file_path.split('/')[2]
+        audio_regions = auditok.split(
+            mix_file_path,  # 通过getattr(row, ‘name')获取元素
+            min_dur=0.2,  # minimum duration of a valid audio event in seconds
+            max_dur=4,  # maximum duration of an event
+            max_silence=0.3,  # maximum duration of tolerated continuous silence within an event
+            energy_threshold=55  # threshold of detection
+        )
+
+        for i, r in enumerate(audio_regions):
+            # Regions returned by `split` have 'start' and 'end' metadata fields
+            print("Region {i}: {r.meta.start:.3f}s -- {r.meta.end:.3f}s".format(i=i, r=r))
+            print(r.meta.end)
+            # region's metadata can also be used with the `save` method
+            # (no need to explicitly specify region's object and `format` arguments)
+
+            file = mix_file_path.split('/')[3]
+            split_mix_file_name = os.path.splitext(file)[0]  # mix1
+            split_mix_file_path = split_mix_dir + signal_class + "/" + split_mix_file_name + "_" + str(i) + ".wav"
+            r.save(split_mix_file_path)
+
 
 def main(args):
     root = args.root
@@ -143,14 +206,13 @@ def main(args):
 
 
 if __name__ == '__main__':
-    # 1.从原始数据集导出描述数据集的csv（完成）
-    # 2.音频下采样 -> 超声波上采样 -> 超声波信号和音频信号相乘（完成）
-    # 3.把超声波信号转换成wav格式（完成）
-    # 4.相乘信号低通滤波，利用auditok同时切割多模态信号
+    # 1.从原始数据集导出描述数据集的csv
+    # 2.音频下采样 -> 超声波上采样 -> 超声波信号和音频信号相乘
+    # 3.把超声波信号转换成wav格式，相乘信号低通滤波
+    # 4.利用auditok同时切割多模态信号
     # 5.生成切割后的文件
     # 6.划分训练集和测试集
     # 7.提取Log-mel Filterbank Coefficients特征
-
 
     # WAV_SOBER_DATA_DIR = "data/voice/sober"  # 清醒语音数据的文件路径
     # WAV_INTOXICATE_DATA_DIR = "data/voice/intoxicate"  # 醉酒语音数据的文件路径
@@ -162,7 +224,7 @@ if __name__ == '__main__':
     #     # 通过getattr(row, ‘name')获取元素
     #     upAnddown(getattr(row, 'wav_file_name'), getattr(row, 'ultrasound_file_name'))  # 对音频上采样，超声波下采样
 
-    split_signal('data/multilsignal')
+    split_signal("data/multilsignal", "data/split.csv")
 
     # args = parser.parse_args()
     # main(args)
