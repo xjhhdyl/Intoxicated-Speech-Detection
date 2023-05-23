@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .att_modules import eca_layer
+from att_modules import eca_layer
 import torch.nn.functional as F
 
 
@@ -179,3 +179,10 @@ class mmWavoiceNet(nn.Module):
 
         out = self.interattend1(x1, x2)
         return out
+
+if __name__ == "__main__":
+    x_1 = torch.rand(2,3)
+    x_2 = torch.rand(2,3)
+    model = mmWavoiceNet(ECABasicBlock, rescrossSE, interattention, [1, 1, 1, 1, 1])
+    model(x_1,x_2)
+    print(model)
