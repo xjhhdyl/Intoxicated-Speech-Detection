@@ -62,7 +62,7 @@ print("划分成功")
 # 2.循环读取语音的文件，替换得到超声波的路径
 # 3.利用copy把替换得到的超声波文件复制到在新的文件夹下
 root = r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\multisignal_dataset"
-multisignal_path = ["\\train\\"]
+multisignal_path = ["\\train\\", "\\val\\"]
 tr_multisignalfile_list = traverse(root, multisignal_path, search_fix=".wav")
 
 for file_path in tr_multisignalfile_list:
@@ -92,3 +92,4 @@ for file_path in tr_multisignalfile_list:
     u2w_file_name = str2.split('\\')[9]
     src_path = src_root + "\\" + signal_class + "\\" + u2w_file_name
     copy(src_path, str2)
+

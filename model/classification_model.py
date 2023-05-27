@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from att_modules import eca_layer
+from .att_modules import eca_layer
 import torch.nn.functional as F
 
 
@@ -110,7 +110,6 @@ class interattention(nn.Module):
         # out = self.gate(x1_att + x2_att)
         return out
 
-
 class mmWavoiceNet(nn.Module):
     def __init__(self, block, rescrossSEblock, interattentionblock, layers):
         super(mmWavoiceNet, self).__init__()
@@ -180,9 +179,52 @@ class mmWavoiceNet(nn.Module):
         out = self.interattend1(x1, x2)
         return out
 
-if __name__ == "__main__":
-    x_1 = torch.rand(2,3)
-    x_2 = torch.rand(2,3)
-    model = mmWavoiceNet(ECABasicBlock, rescrossSE, interattention, [1, 1, 1, 1, 1])
-    model(x_1,x_2)
-    print(model)
+
+class mmWavoice(nn.Module):
+    def __init__(self, rnnClassfication, mmwavoicenet):
+        super(mmWavoice, self).__init__()
+        self.rnnClassfication = rnnClassfication
+        self.mmWavoiceNet = mmwavoicenet
+
+    def forward(self, voice_batch_data, mmwave_batch_data, batch_label, is_training=True):
+        voice_batch_data = voice_batch_data.unsqueeze(1)
+        mmwave_batch_data = mmwave_batch_data.unsqueeze(1)
+        mmWavoice_feature = self.mmWavoiceNet(voice_batch_data, mmwave_batch_data)
+        mmWavoice_feature = mmWavoice_feature.squeeze(1)
+        out = self.rnnClassfication(mmWavoice_feature)  # input : batch_data
+
+        return out
+
+class rnnClassfication(nn.Module):
+    def __init__(self, input_feature_dim, hidden_dim, num_classes, rnn_uint="LSTM", dropout_rate=0.0):
+        super(rnnClassfication, self).__init__()
+        self.rnn_uint = getattr(nn, rnn_uint.upper())
+        self.num_classes = num_classes
+        self.BLSTM = self.rnn_uint(
+            input_feature_dim * 2,
+            hidden_dim,
+            1,
+            bidirectional=True,
+            dropout=dropout_rate,
+            batch_first=True,
+        )
+        self.fc1 = nn.Linear(hidden_dim * 2, 64)
+        self.fc2 = nn.Linear(64, self.num_classes)
+        self.dropout = nn.Dropout(0.4)
+
+    def forward(self, input_x):
+        batch_size = input_x.size(0)
+        timestep = input_x.size(1)
+        feature_dim = input_x.size(2)
+        time_reduc = int(timestep / 2)
+        input_xr = input_x.contiguous().view(batch_size, time_reduc, feature_dim * 2)
+        x, (h_n, c_n) = self.BLSTM(input_xr)
+
+        output_f = h_n[-2, :, :]  # batchsize * hidden_size 的向量
+        output_b = h_n[-1, :, :]  # 如果是双向的则有两个h向量的输出；
+        output = torch.cat([output_f, output_b], dim=-1)  # 将输出的两个tensor拼接在一起,dim=-1是纵向扩张
+        out_fc1 = self.fc1(output)  # 输出放到两个全连接层,一个relu，一个softmax去算概率
+        out_relu = F.relu(out_fc1)  # 每次通过线性层的时候都要激活，这里用的relu激活函数
+        out = self.dropout(out_relu)
+        out = self.fc2(out)
+        return out

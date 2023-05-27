@@ -23,27 +23,3 @@ def traverse(root, path, search_fix=".flac"):
                     file_path = p + sub_p + "\\" + file
                     f_list.append(file_path)
     return f_list
-
-if __name__ == '__main__':
-
-    root = r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data"
-    trainVoice_path = ["\split_multisignal\\"]
-
-    win_size = 0.025
-    n_filters = 40
-
-    tr_voicefile_list = traverse(root, trainVoice_path, search_fix=".wav")
-
-    print("________________________________________________")
-    print("Processing wav2logfbank...", flush=True)
-    results = Parallel(n_jobs=2, backend="threading")(
-        delayed(wav2logfbank)(i, win_size, n_filters) for i in tqdm(tr_voicefile_list)
-    )
-
-    # log-mel fbank 2 feature
-    print("-------------------------------------------------")
-    print("Preparing Training Dataset...", flush=True)
-
-    tr_voicefile_list = traverse(root, trainVoice_path, search_fix=".fb" + str(n_filters))
-    tr_text = traverse(root, trainVoice_path, return_label=True)
-    tr_mmwavefile_list = traverse(root, trainsplit_ultrasound2wav_path, search_fix=".fb" + str(n_filters))

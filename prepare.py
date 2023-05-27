@@ -8,50 +8,11 @@ import pandas as pd
 import scipy.interpolate as spi
 import soundfile
 import numpy as np
+from joblib import Parallel, delayed
 from scipy import signal
 import auditok
-
-parser = argparse.ArgumentParser(description="preprocess.")
-
-parser.add_argument(
-    "--root",
-    metavar="root",
-    type=str,
-    required=False,
-    default="/data/alcohol_dataset/",
-    help="Absolute file path to alcoholDataset.",
-)
-
-parser.add_argument(
-    "--n_jobs",
-    dest="n_jobs",
-    action="store",
-    default=-2,
-    help="number of cpu available for preprocessing. \n -1: use all cpu, -2: use all  cpu but one",
-)
-
-parser.add_argument(
-    "--n_filters",
-    dest="n_filters",
-    action="store",
-    default=40,
-    help="number of flters for fbank. (Default: 40)",
-)
-parser.add_argument(
-    "--win_size",
-    dest="win_size",
-    action="store",
-    default=0.025,
-    help="Window size during feature extraction (Default : 0.025 [25ms])",
-)
-parser.add_argument(
-    "--norm_x",
-    dest="norm_x",
-    action="store",
-    default=False,
-    help="Normalize features s.t. mean = 0 ,std=1",
-)
-
+from tqdm import tqdm
+from utils.functions import traverse, wav2logfbank
 
 def butter_lowpass(sample_rate, cut_off, order=5):
     """ 低通滤波器的设计 """
@@ -60,13 +21,11 @@ def butter_lowpass(sample_rate, cut_off, order=5):
     b, a = signal.butter(order, normal_cut_off, btype="low", analog=False)
     return b, a
 
-
 def butter_lowpass_filtfilt(data, sample_rate, cut_off_frequency, order=5):
     """ 低通滤波器的执行，消除延迟 """
     b, a = butter_lowpass(sample_rate, cut_off_frequency, order=order)
     y = signal.filtfilt(b, a, data)
     return y
-
 
 def create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET):
     # 0-清醒  1-醉酒
@@ -91,7 +50,6 @@ def create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET):
                                                  ULTR_INTOXICATE_DIR + "/" + ultrasound_file_name, 1,
                                                  'intoxicate']  # 向数据集插入一条醉酒数据记录
     dataset_df.to_csv(DATASET, index=False)
-
 
 def create_split_dataset_csv(mix_data_dir, split_dataset):
     # 0-清醒  1-醉酒
@@ -190,36 +148,13 @@ def split_signal(mix_data_dir, split_dataset):
             r.save(split_mix_file_path)
 
 
-def main(args):
-    root = args.root
-    target_path = root + "/processed/"
-    trainVoice_path = ["train_voice/"]
-    trainultrasound_path = ["train_ultrasound/"]
-    devVoice_path = ["test_voice/"]
-    devultrasound_path = ["test_ultrasound/"]
-    n_jobs = args.n_jobs
-    n_filters = args.n_filters
-    win_size = args.win_size
-    norm_x = args.norm_x
-
-    if not os.path.exists(target_path):
-        os.makedirs(target_path)
-
-    print("-------------Processing Datasets--------------")
-    print("Training Voice sets :", trainVoice_path)
-    print("Training ultrasound sets", trainultrasound_path)
-    print("Validation Voice sets:", devVoice_path)
-    print("Validation ultrasound sets", devultrasound_path)
-    print("-----------------------------------------------")
-
-
 if __name__ == '__main__':
     # 1.从原始数据集导出描述数据集的csv
     # 2.音频下采样 -> 超声波上采样 -> 超声波信号和音频信号相乘
     # 3.把超声波信号转换成wav格式，相乘信号低通滤波
     # 4.利用auditok同时切割多模态信号
     # 5.生成切割后的文件
-    # 6.划分训练集和测试集  运行split_voice_train_val.py和split_ultrsound_train_val.py
+    # 6.划分训练集和测试集
     # 7.提取Log-mel Filterbank Coefficients特征
 
     WAV_SOBER_DATA_DIR = "data/voice/sober"  # 清醒语音数据的文件路径
@@ -233,6 +168,92 @@ if __name__ == '__main__':
         upAnddown(getattr(row, 'wav_file_name'), getattr(row, 'ultrasound_file_name'))  # 对音频上采样，超声波下采样
 
     split_signal("data/multilsignal", "data/split.csv")
+    os.system('python ./utils/split_train_val.py')  # 划分数据集
 
-    # args = parser.parse_args()
-    # main(args)
+    # mmWave指代ultrasound
+    root = r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data"
+    target_path = root + "\\processed\\"
+    trainVoice_path = ["\\multisignal_dataset\\train\\"]
+    trainmmWave_path = ["\\u2w_dataset\\train\\"]
+    devVoice_path = ["\\multisignal_dataset\\val\\"]
+    devmmWave_path = ["\\u2w_dataset\\val\\"]
+    n_jobs = 2
+    n_filters = 40
+    win_size = 0.025
+    norm_x = False
+
+    if not os.path.exists(target_path):
+        os.makedirs(target_path)
+
+    print("-------------Processing Datasets--------------")
+    print("Training Voice sets :", trainVoice_path)
+    print("Training mmWave sets", trainmmWave_path)
+    print("Validation Voice sets:", devVoice_path)
+    print("Validation mmWave sets", devmmWave_path)
+    print("-----------------------------------------------")
+
+    tr_voicefile_list = traverse(root, trainVoice_path, search_fix=".wav")
+    tr_mmwavefile_list = traverse(root, trainmmWave_path, search_fix=".wav")
+
+    dev_voicefile_list = traverse(root, devVoice_path, search_fix=".wav")
+    dev_mmwavefile_list = traverse(root, devmmWave_path, search_fix=".wav")
+
+    print("________________________________________________")
+    print("Processing wav2logfbank...", flush=True)
+
+    print("Training Voice", flush=True)
+    results = Parallel(n_jobs=n_jobs, backend="threading")(
+        delayed(wav2logfbank)(i, win_size, n_filters) for i in tqdm(tr_voicefile_list)
+    )
+
+    print("Training mmWave", flush=True)
+    results = Parallel(n_jobs=n_jobs, backend="threading")(
+        delayed(wav2logfbank)(i, win_size, n_filters) for i in tqdm(tr_mmwavefile_list)
+    )
+    print("Validation Voice", flush=True)
+    results = Parallel(n_jobs=n_jobs, backend="threading")(
+        delayed(wav2logfbank)(i, win_size, n_filters) for i in tqdm(dev_voicefile_list)
+    )
+
+    print("Validation mmWave", flush=True)
+    results = Parallel(n_jobs=n_jobs, backend="threading")(
+        delayed(wav2logfbank)(i, win_size, n_filters) for i in tqdm(dev_mmwavefile_list)
+    )
+
+    # log-mel fbank 2 feature
+    print("-------------------------------------------------")
+    print("Preparing Training Dataset...", flush=True)
+
+    tr_voicefile_list = traverse(root, trainVoice_path, search_fix=".fb" + str(n_filters))
+    tr_mmwavefile_list = traverse(root, trainmmWave_path, search_fix=".fb" + str(n_filters))
+
+    # write dataset
+
+    file_name = "train.csv"
+    print("Writing dataset to " + target_path + file_name + "...", flush=True)
+    with open(target_path + file_name, "w") as f:
+        f.write("idx, voice_input, mmwave_input, label\n")
+        for i in range(len(tr_voicefile_list)):
+            f.write(str(i) + ",")
+            f.write(tr_voicefile_list[i] + ",")
+            f.write(tr_mmwavefile_list[i] + ",")  # train mmwave path
+            f.write(tr_voicefile_list[i].split("\\")[8])
+            f.write("\n")
+    print()
+    print("Preparing Validation Dataset...", flush=True)
+    dev_voicefile_list = traverse(root, devVoice_path, search_fix=".fb" + str(n_filters))
+    dev_mmwavefile_list = traverse(root, devmmWave_path, search_fix=".fb" + str(n_filters))
+
+    # write dataset
+    file_name = "dev.csv"
+    print("Writing dataset to " + target_path + file_name + "...", flush=True)
+
+    with open(target_path + file_name, "w") as f:
+        f.write("idx, voice_input, mmwave_input, label\n")
+        for i in range(len(dev_voicefile_list)):
+            f.write(str(i) + ",")
+            f.write(dev_voicefile_list[i] + ",")
+            f.write(dev_mmwavefile_list[i] + ",")
+            f.write(dev_mmwavefile_list[i].split("\\")[8])
+            f.write("\n")
+    print("--------end-----------")
