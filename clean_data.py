@@ -18,7 +18,10 @@ if __name__ == "__main__":
     datadirname = [r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\multilsignal",
                    r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\multisignal_dataset",
                    r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\processed",
-                   r""]
+                   r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\split_multisignal",
+                   r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\split_u2w",
+                   r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\u2w_dataset",
+                   r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\ultrasound2wav"]
 
     for pathname in datadirname:
         del_files(pathname)
