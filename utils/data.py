@@ -8,12 +8,13 @@ from torch.utils.data import Dataset
 label_map = {'sober': 0, 'intoxicate': 1}
 listener_layers = 5
 
+
 class mmWavoiceDataset(Dataset):
     def __init__(self, params, name="train"):
         self.params = params
         self.batch_size = params["data"]["batch_size"]
         if name == "test":
-            self.batch_size = 2
+            self.batch_size = 8
         # the files voice and mmwave paths and id
         # idx voice_input mmwave_input label
         self.targets_dict = {}
@@ -31,7 +32,7 @@ class mmWavoiceDataset(Dataset):
                 self.targets_dict[sid] = label
                 self.voicefile_list.append([sid, voicepath])
                 self.mmwavefile_list.append([sid, mmwavepath])
-        self.lengths = len(self.voicefile_list)
+                self.lengths = len(self.voicefile_list)
 
     def __getitem__(self, index):
         voice_utt_id, voice_path = self.voicefile_list[index]
@@ -56,7 +57,7 @@ def collate_mmWavoice_fn(batch):
     padded_voicefeatures = []
     padded_mmwavefeatures = []
     padded_targets = []
-    i = 0
+
     for utt_ids, voice_feat, mmwave_feat, feat_len, target in batch:
         sys.stdout.flush()
         padded_voicefeatures.append(
@@ -64,15 +65,16 @@ def collate_mmWavoice_fn(batch):
         padded_mmwavefeatures.append(
             np.pad(mmwave_feat, ((0, max_feature_length - feat_len), (0, 0)), mode="constant", constant_values=0.0, ))
         padded_targets.append(target)
-        i += 1
+
     voice_features = torch.FloatTensor(np.array(padded_voicefeatures))
     mmwave_features = torch.FloatTensor(np.array(padded_mmwavefeatures))
     features_length = torch.IntTensor(np.array(features_length))
-    targets = torch.IntTensor(np.array(padded_targets))
+    targets = torch.LongTensor(np.array(padded_targets))
     voice_features = {"voice_inputs": voice_features, "inputs_length": features_length}
     mmwave_features = {"mmwave_inputs": mmwave_features, "inputs_length": features_length}
     label = {"targets": targets}
     return utt_ids, voice_features, mmwave_features, label
+
 
 class mmWavoiceLoader(object):
     def __init__(self, dataset, shuffle=False, ngpu=1, mode="ddp", num_workers=0):

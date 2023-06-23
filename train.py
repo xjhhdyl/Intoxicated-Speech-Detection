@@ -8,7 +8,6 @@ from utils.data import mmWavoiceDataset, mmWavoiceLoader
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import random
-import os
 
 if __name__ == '__main__':
     writer = SummaryWriter("./logs_train")
@@ -66,7 +65,6 @@ if __name__ == '__main__':
     print("Training...", flush=True)
 
     global_step = 0 + len(train_loader)
-    best_cv_loss = 10e5
     my_fields = {"loss": 0}
     best_acc = 0.0
     for epoch in tqdm(range(epochs), desc="Epoch training"):

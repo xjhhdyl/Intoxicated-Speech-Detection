@@ -1,14 +1,14 @@
 data:
   name: mmWavoice
   vocab: /data/home/Tiantian_Liu/data/mmWavoice_dataset/processed/idx2chap.csv  
-  batch_size: 8 #32
+  batch_size: 16 #32
   text: character
   train: C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\processed\train.csv
   test: C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\processed\dev.csv
   dev: C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\processed\dev.csv
   short_first: False
   num_mel_bins: 40 # 40
-  num_works: 2
+  num_works: 4
   vocab_size: 29 #30
 model:
   listener:
@@ -34,7 +34,7 @@ model:
     max_label_len: 576
 training:
   optimizer: 'adam'
-  lr: 0.001 #0.0002
+  lr: 0.002 #0.0002
   weight_decay: 0.000
   momentum: 0.0
   epochs: 60 #100

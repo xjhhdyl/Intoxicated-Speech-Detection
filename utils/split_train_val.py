@@ -11,8 +11,8 @@ def make_file(file_path: str):
 
 random.seed(0)
 
-# 将数据集中10%的数据划分到验证集中
-split_rate = 0.1
+# 将数据集中20%的数据划分到验证集中
+split_rate = 0.2
 data_path = r'C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\split_multisignal'  # 数据集存放的地方，建议在程序所在的文件夹下新建一个data文件夹，将需要划分的数据集存放进去
 data_root = r'C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\multisignal_dataset'  # 这里是生成的训练集和验证集所处的位置，这里设置的是在当前文件夹下。
 

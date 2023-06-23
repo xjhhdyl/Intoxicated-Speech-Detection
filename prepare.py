@@ -13,6 +13,9 @@ from scipy import signal
 import auditok
 from tqdm import tqdm
 from utils.functions import traverse, wav2logfbank
+from pydub import AudioSegment
+from pydub.utils import make_chunks
+import shutil
 
 def butter_lowpass(sample_rate, cut_off, order=5):
     """ 低通滤波器的设计 """
@@ -21,11 +24,13 @@ def butter_lowpass(sample_rate, cut_off, order=5):
     b, a = signal.butter(order, normal_cut_off, btype="low", analog=False)
     return b, a
 
+
 def butter_lowpass_filtfilt(data, sample_rate, cut_off_frequency, order=5):
     """ 低通滤波器的执行，消除延迟 """
     b, a = butter_lowpass(sample_rate, cut_off_frequency, order=order)
     y = signal.filtfilt(b, a, data)
     return y
+
 
 def create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET):
     # 0-清醒  1-醉酒
@@ -50,6 +55,7 @@ def create_dataset_csv(WAV_SOBER_DATA_DIR, WAV_INTOXICATE_DATA_DIR, DATASET):
                                                  ULTR_INTOXICATE_DIR + "/" + ultrasound_file_name, 1,
                                                  'intoxicate']  # 向数据集插入一条醉酒数据记录
     dataset_df.to_csv(DATASET, index=False)
+
 
 def create_split_dataset_csv(mix_data_dir, split_dataset):
     # 0-清醒  1-醉酒
@@ -125,7 +131,7 @@ def split_signal(mix_data_dir, split_dataset):
         audio_regions = auditok.split(
             mix_file_path,  # 通过getattr(row, ‘name')获取元素
             min_dur=0.2,  # minimum duration of a valid audio event in seconds
-            max_dur=4,  # maximum duration of an event
+            max_dur=2,  # maximum duration of an event
             max_silence=0.3,  # maximum duration of tolerated continuous silence within an event
             energy_threshold=35  # threshold of detection
         )
@@ -147,8 +153,45 @@ def split_signal(mix_data_dir, split_dataset):
             split_mix_file_path = split_mix_dir + signal_class + "/" + split_mix_file_name + "_" + str(i) + ".wav"
             r.save(split_mix_file_path)
 
+# def split_signal(mix_data_dir, split_dataset):
+#     create_split_dataset_csv(mix_data_dir, split_dataset)  # 创建分割数据集
+#     split_data_df = pd.read_csv(split_dataset)
+#
+#     split_mix_dir = 'data/split_multisignal/'
+#     split_u2w_dir = 'data/split_u2w/'
+#
+#     for rowdata in split_data_df.itertuples():  # 按行遍历
+#
+#         mix_file_path = getattr(rowdata, 'mix_file_path')
+#         u2w_file_path = getattr(rowdata, 'ultrasound2wav_file_path')
+#
+#         signal_class = mix_file_path.split('/')[2]
+#         chunk_length_ms = 4000  # 音频时长4s
+#
+#         mix_audio = AudioSegment.from_file(mix_file_path, "wav")  # 读取mix
+#         mix_chunks = make_chunks(mix_audio, chunk_length_ms)  # 分割mix
+#         for i, chunk in enumerate(mix_chunks):  # 保存mix分割文件
+#
+#             file = mix_file_path.split('/')[3]
+#             split_mix_file_name = os.path.splitext(file)[0]  # mix1
+#             split_mix_file_path = split_mix_dir + signal_class + "/" + split_mix_file_name + "_" + str(i) + ".wav"
+#             if chunk.duration_seconds >= 2:
+#                 print("exporting：", split_mix_file_path)
+#                 chunk.export(split_mix_file_path, format="wav")
+#
+#         u2w_audio = AudioSegment.from_file(u2w_file_path, "wav")  # 读取超声波
+#         u2w_chunks = make_chunks(u2w_audio, chunk_length_ms)  # 分割超声波
+#         for i, chunk in enumerate(u2w_chunks):  # 保存mix分割文件
+#
+#             file = u2w_file_path.split('/')[3]
+#             split_u2w_file_name = os.path.splitext(file)[0]  # mix1
+#             split_u2w_file_path = split_u2w_dir + signal_class + "/" + split_u2w_file_name + "_" + str(i) + ".wav"
+#             if chunk.duration_seconds >= 2:
+#                 print("exporting：", split_u2w_file_path)
+#                 chunk.export(split_u2w_file_path, format="wav")
 
 if __name__ == '__main__':
+    # 0.清空数据集
     # 1.从原始数据集导出描述数据集的csv
     # 2.音频下采样 -> 超声波上采样 -> 超声波信号和音频信号相乘
     # 3.把超声波信号转换成wav格式，相乘信号低通滤波
@@ -169,6 +212,21 @@ if __name__ == '__main__':
 
     split_signal("data/multilsignal", "data/split.csv")
     os.system('python ./utils/split_train_val.py')  # 划分数据集
+
+    # 备份数据集
+    source_path = os.path.abspath(r'C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data\multisignal_dataset')
+    target_path = os.path.abspath(r'D:\Research_projects\Alcohol_detection\WAV')
+
+    if not os.path.exists(target_path):
+        # 如果目标路径不存在原文件夹的话就创建
+        os.makedirs(target_path)
+
+    if os.path.exists(source_path):
+        # 如果目标路径存在原文件夹的话就先删除
+        shutil.rmtree(target_path)
+
+    shutil.copytree(source_path, target_path)
+    print('copy dir finished!')
 
     # mmWave指代ultrasound
     root = r"C:\Users\zrypz\PycharmProjects\Alcohol_detection_mix\data"

@@ -110,6 +110,7 @@ class interattention(nn.Module):
         # out = self.gate(x1_att + x2_att)
         return out
 
+
 class mmWavoiceNet(nn.Module):
     def __init__(self, block, rescrossSEblock, interattentionblock, layers):
         super(mmWavoiceNet, self).__init__()
@@ -195,6 +196,7 @@ class mmWavoice(nn.Module):
 
         return out
 
+
 class rnnClassfication(nn.Module):
     def __init__(self, input_feature_dim, hidden_dim, num_classes, rnn_uint="LSTM", dropout_rate=0.0):
         super(rnnClassfication, self).__init__()
@@ -208,9 +210,7 @@ class rnnClassfication(nn.Module):
             dropout=dropout_rate,
             batch_first=True,
         )
-        self.fc1 = nn.Linear(hidden_dim * 2, 64)
-        self.fc2 = nn.Linear(64, self.num_classes)
-        self.dropout = nn.Dropout(0.4)
+        self.fc1 = nn.Linear(hidden_dim * 2, num_classes)
 
     def forward(self, input_x):
         batch_size = input_x.size(0)
@@ -223,8 +223,5 @@ class rnnClassfication(nn.Module):
         output_f = h_n[-2, :, :]  # batchsize * hidden_size 的向量
         output_b = h_n[-1, :, :]  # 如果是双向的则有两个h向量的输出；
         output = torch.cat([output_f, output_b], dim=-1)  # 将输出的两个tensor拼接在一起,dim=-1是纵向扩张
-        out_fc1 = self.fc1(output)  # 输出放到两个全连接层,一个relu，一个softmax去算概率
-        out_relu = F.relu(out_fc1)  # 每次通过线性层的时候都要激活，这里用的relu激活函数
-        out = self.dropout(out_relu)
-        out = self.fc2(out)
-        return out
+        out_fc1 = self.fc1(output)
+        return out_fc1
